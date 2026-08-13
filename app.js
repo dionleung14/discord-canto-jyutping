@@ -3,7 +3,7 @@ import {
   Client,
   Events,
   GatewayIntentBits,
-  Partials,
+  SlashCommandBuilder,
 } from "discord.js";
 
 const token = process.env.DISCORD_TOKEN;
@@ -13,30 +13,42 @@ if (!token) {
   process.exit(1);
 }
 
-// Gateway client — needed to receive message events from text channels.
-// (The Discord quick-start HTTP interactions flow only handles slash commands.)
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-  ],
-  partials: [Partials.Channel],
+  intents: [GatewayIntentBits.Guilds],
 });
 
-client.once(Events.ClientReady, (readyClient) => {
+const jyutpingCommand = new SlashCommandBuilder()
+  .setName("jyutping")
+  .setDescription("Echo the text you send")
+  .addStringOption(option =>
+    option.setName("text").setDescription("The text to echo").setRequired(true),
+  );
+
+client.once(Events.ClientReady, async readyClient => {
   console.log(`Logged in as ${readyClient.user.tag}`);
+
+  try {
+    // Register per-guild so the command appears immediately (global can take up to an hour).
+    await Promise.all(
+      readyClient.guilds.cache.map(guild =>
+        guild.commands.set([jyutpingCommand]),
+      ),
+    );
+    console.log("Registered /jyutping slash command");
+  } catch (err) {
+    console.error("Failed to register slash commands:", err);
+  }
 });
 
-client.on(Events.MessageCreate, async (message) => {
-  // Ignore bots (including this one) to avoid echo loops
-  if (message.author.bot) return;
+client.on(Events.InteractionCreate, async interaction => {
+  if (!interaction.isChatInputCommand()) return;
+  if (interaction.commandName !== "jyutping") return;
 
-  const content = message.content;
+  const content = interaction.options.getString("text");
   if (!content) return;
 
   try {
-    await message.channel.send(content);
+    await interaction.reply(content);
   } catch (err) {
     console.error("Failed to echo message:", err);
   }
