@@ -20,15 +20,35 @@ const client = new Client({
 
 const DISCORD_MESSAGE_LIMIT = 2000;
 
-const jyutpingCommand = new SlashCommandBuilder()
-  .setName("jyutping")
-  .setDescription("Translate text to Cantonese and return Chinese characters")
-  .addStringOption(option =>
-    option
-      .setName("text")
-      .setDescription("The text to translate into Cantonese")
-      .setRequired(true),
-  );
+const textOption = option =>
+  option
+    .setName("text")
+    .setDescription("The text to translate")
+    .setRequired(true);
+
+const slashCommands = [
+  new SlashCommandBuilder()
+    .setName("jyutping")
+    .setDescription("Translate text to Cantonese characters and Jyutping")
+    .addStringOption(textOption),
+  new SlashCommandBuilder()
+    .setName("simplified")
+    .setDescription("Translate text to Simplified Chinese")
+    .addStringOption(textOption),
+];
+
+const translateTargets = {
+  jyutping: {
+    to: "yue",
+    romanizationLabel: "Jyutping",
+    emptyMessage: "No Cantonese translation was returned.",
+  },
+  simplified: {
+    to: "zh-CN",
+    romanizationLabel: "Pinyin",
+    emptyMessage: "No Simplified Chinese translation was returned.",
+  },
+};
 
 client.once(Events.ClientReady, async readyClient => {
   console.log(`Logged in as ${readyClient.user.tag}`);
@@ -37,10 +57,10 @@ client.once(Events.ClientReady, async readyClient => {
     // Register per-guild so the command appears immediately (global can take up to an hour).
     await Promise.all(
       readyClient.guilds.cache.map(guild =>
-        guild.commands.set([jyutpingCommand]),
+        guild.commands.set(slashCommands),
       ),
     );
-    console.log("Registered /jyutping slash command");
+    console.log("Registered /jyutping and /simplified slash commands");
   } catch (err) {
     console.error("Failed to register slash commands:", err);
   }
@@ -48,7 +68,9 @@ client.once(Events.ClientReady, async readyClient => {
 
 client.on(Events.InteractionCreate, async interaction => {
   if (!interaction.isChatInputCommand()) return;
-  if (interaction.commandName !== "jyutping") return;
+
+  const target = translateTargets[interaction.commandName];
+  if (!target) return;
 
   const content = interaction.options.getString("text");
   if (!content) return;
@@ -56,22 +78,22 @@ client.on(Events.InteractionCreate, async interaction => {
   try {
     await interaction.deferReply();
 
-    // forceBatch: false hits the single endpoint (dt=rm), which includes Jyutping.
+    // forceBatch: false hits the single endpoint (dt=rm), which includes romanization.
     const result = await translate(content, {
-      to: "yue",
+      to: target.to,
       client: "gtx",
       forceBatch: false,
     });
     const chinese = result.text || "";
-    const jyutping = result.pronunciation;
+    const romanization = result.pronunciation;
 
     if (!chinese) {
-      await interaction.editReply("No Cantonese translation was returned.");
+      await interaction.editReply(target.emptyMessage);
       return;
     }
 
-    const reply = jyutping
-      ? `English: ${content}\nChinese: ${chinese}\nJyutping: ${jyutping}`
+    const reply = romanization
+      ? `English: ${content}\nChinese: ${chinese}\n${target.romanizationLabel}: ${romanization}`
       : chinese;
     await interaction.editReply(reply.slice(0, DISCORD_MESSAGE_LIMIT));
   } catch (err) {
