@@ -1,6 +1,8 @@
 import { AttachmentBuilder, SlashCommandBuilder } from "discord.js";
 import translate, { speak } from "google-translate-api-x";
 import OpenCC from "opencc-js";
+import { pinyin } from "pinyin-pro";
+import ToJyutping from "to-jyutping";
 
 const DISCORD_MESSAGE_LIMIT = 2000;
 const SPEAK_CHAR_LIMIT = 200;
@@ -23,6 +25,12 @@ const simplifiedTarget = {
   romanizationLabel: "Jyutping",
   emptyMessage: "No Simplified Chinese translation was returned.",
   simplify: true,
+};
+
+const mandarinTarget = {
+  to: "zh-CN",
+  romanizationLabel: "Pinyin",
+  emptyMessage: "No Mandarin translation was returned.",
 };
 
 export const commands = [
@@ -64,6 +72,22 @@ export const commands = [
     ...simplifiedTarget,
     withAudio: true,
   },
+  {
+    data: new SlashCommandBuilder()
+      .setName("tmand")
+      .setDescription("Translate to Mandarin characters and Pinyin")
+      .addStringOption(textOption),
+    ...mandarinTarget,
+    withAudio: false,
+  },
+  {
+    data: new SlashCommandBuilder()
+      .setName("amand")
+      .setDescription("Translate to Mandarin characters, Pinyin, and audio")
+      .addStringOption(textOption),
+    ...mandarinTarget,
+    withAudio: true,
+  },
 ];
 
 export const slashCommands = commands.map(command => command.data);
@@ -87,6 +111,17 @@ async function speakTranslation(text, to) {
   return Buffer.concat(parts.map(part => Buffer.from(part, "base64")));
 }
 
+function romanize(command, displayText, speechText, googlePronunciation) {
+  if (googlePronunciation) return googlePronunciation;
+  if (command.romanizationLabel === "Jyutping") {
+    return ToJyutping.getJyutpingText(speechText || displayText);
+  }
+  if (command.romanizationLabel === "Pinyin") {
+    return pinyin(displayText);
+  }
+  return "";
+}
+
 export async function handleSlashCommand(interaction) {
   if (!interaction.isChatInputCommand()) return;
 
@@ -107,16 +142,23 @@ export async function handleSlashCommand(interaction) {
     });
     const speechText = result.text || "";
     const chinese = command.simplify ? toSimplified(speechText) : speechText;
-    const romanization = result.pronunciation;
+    const romanization = romanize(
+      command,
+      chinese,
+      speechText,
+      result.pronunciation,
+    );
 
     if (!chinese) {
       await interaction.editReply(command.emptyMessage);
       return;
     }
 
-    const reply = romanization
-      ? `English: ${content}\nChinese: ${chinese}\n${command.romanizationLabel}: ${romanization}`
-      : chinese;
+    const reply = [
+      `English: ${content}`,
+      `Chinese: ${chinese}`,
+      ...(romanization ? [`${command.romanizationLabel}: ${romanization}`] : []),
+    ].join("\n");
     const payload = { content: reply.slice(0, DISCORD_MESSAGE_LIMIT) };
 
     if (command.withAudio) {
