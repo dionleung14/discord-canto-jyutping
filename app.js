@@ -5,6 +5,7 @@ import {
   GatewayIntentBits,
   SlashCommandBuilder,
 } from "discord.js";
+import translate from "google-translate-api-x";
 
 const token = process.env.DISCORD_TOKEN;
 
@@ -17,11 +18,16 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds],
 });
 
+const DISCORD_MESSAGE_LIMIT = 2000;
+
 const jyutpingCommand = new SlashCommandBuilder()
   .setName("jyutping")
-  .setDescription("Echo the text you send")
+  .setDescription("Translate text to Cantonese and return Chinese characters")
   .addStringOption(option =>
-    option.setName("text").setDescription("The text to echo").setRequired(true),
+    option
+      .setName("text")
+      .setDescription("The text to translate into Cantonese")
+      .setRequired(true),
   );
 
 client.once(Events.ClientReady, async readyClient => {
@@ -48,9 +54,38 @@ client.on(Events.InteractionCreate, async interaction => {
   if (!content) return;
 
   try {
-    await interaction.reply(content);
+    await interaction.deferReply();
+
+    // forceBatch: false hits the single endpoint (dt=rm), which includes Jyutping.
+    const result = await translate(content, {
+      to: "yue",
+      client: "gtx",
+      forceBatch: false,
+    });
+    const chinese = result.text || "";
+    const jyutping = result.pronunciation;
+
+    if (!chinese) {
+      await interaction.editReply("No Cantonese translation was returned.");
+      return;
+    }
+
+    const reply = jyutping ? `${chinese}\n${jyutping}` : chinese;
+    await interaction.editReply(reply.slice(0, DISCORD_MESSAGE_LIMIT));
   } catch (err) {
-    console.error("Failed to echo message:", err);
+    console.error("Failed to translate message:", err);
+    const errorMessage = "Could not translate that text. Please try again.";
+    try {
+      if (interaction.deferred || interaction.replied) {
+        console.log("editing reply");
+        await interaction.editReply(errorMessage);
+      } else {
+        console.log("sending error message");
+        await interaction.reply({ content: errorMessage, ephemeral: true });
+      }
+    } catch (replyErr) {
+      console.error("Failed to send error reply:", replyErr);
+    }
   }
 });
 
