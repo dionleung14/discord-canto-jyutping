@@ -1,74 +1,45 @@
 import "dotenv/config";
-import express from "express";
 import {
-  ButtonStyleTypes,
-  InteractionResponseFlags,
-  InteractionResponseType,
-  InteractionType,
-  MessageComponentTypes,
-  verifyKeyMiddleware,
-} from "discord-interactions";
+  Client,
+  Events,
+  GatewayIntentBits,
+  Partials,
+} from "discord.js";
 
-// Create an express app
-const app = express();
-// Get port, or default to 3000
-const PORT = process.env.PORT || 3000;
-// To keep track of our active games
-const activeGames = {};
+const token = process.env.DISCORD_TOKEN;
 
-/**
- * Interactions endpoint URL where Discord will send HTTP requests
- * Parse request body and verifies incoming requests using discord-interactions package
- */
-// app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async function (req, res) {
-//   // Interaction id, type and data
-//   const { id, type, data } = req.body;
+if (!token) {
+  console.error("Missing DISCORD_TOKEN in .env");
+  process.exit(1);
+}
 
-//   /**
-//    * Handle verification requests
-//    */
-//   if (type === InteractionType.PING) {
-//     return res.send({ type: InteractionResponseType.PONG });
-//   }
-
-//   /**
-//    * Handle slash command requests
-//    * See https://discord.com/developers/docs/interactions/application-commands#slash-commands
-//    */
-//   if (type === InteractionType.APPLICATION_COMMAND) {
-//     const { name } = data;
-
-//     // "test" command
-//     if (name === 'test') {
-//       // Send a message into the channel where command was triggered from
-//       return res.send({
-//         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-//         data: {
-//           flags: InteractionResponseFlags.IS_COMPONENTS_V2,
-//           components: [
-//             {
-//               type: MessageComponentTypes.TEXT_DISPLAY,
-//               // Fetches a random emoji to send from a helper function
-//               content: `hello world ${getRandomEmoji()}`
-//             }
-//           ]
-//         },
-//       });
-//     }
-
-//     console.error(`unknown command: ${name}`);
-//     return res.status(400).json({ error: 'unknown command' });
-//   }
-
-//   console.error('unknown interaction type', type);
-//   return res.status(400).json({ error: 'unknown interaction type' });
-// });
-
-app.get("/", (req, res) => {
-  console.log("got request");
-  res.send("Hello World");
+// Gateway client — needed to receive message events from text channels.
+// (The Discord quick-start HTTP interactions flow only handles slash commands.)
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+  ],
+  partials: [Partials.Channel],
 });
 
-app.listen(PORT, () => {
-  console.log("Listening on port", PORT);
+client.once(Events.ClientReady, (readyClient) => {
+  console.log(`Logged in as ${readyClient.user.tag}`);
 });
+
+client.on(Events.MessageCreate, async (message) => {
+  // Ignore bots (including this one) to avoid echo loops
+  if (message.author.bot) return;
+
+  const content = message.content;
+  if (!content) return;
+
+  try {
+    await message.channel.send(content);
+  } catch (err) {
+    console.error("Failed to echo message:", err);
+  }
+});
+
+client.login(token);
