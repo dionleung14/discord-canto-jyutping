@@ -70,17 +70,17 @@ client.on(Events.InteractionCreate, async interaction => {
       return;
     }
 
-    const reply = jyutping ? `${chinese}\n${jyutping}` : chinese;
+    const reply = jyutping
+      ? `English: ${content}\nChinese: ${chinese}\nJyutping: ${jyutping}`
+      : chinese;
     await interaction.editReply(reply.slice(0, DISCORD_MESSAGE_LIMIT));
   } catch (err) {
     console.error("Failed to translate message:", err);
     const errorMessage = "Could not translate that text. Please try again.";
     try {
       if (interaction.deferred || interaction.replied) {
-        console.log("editing reply");
         await interaction.editReply(errorMessage);
       } else {
-        console.log("sending error message");
         await interaction.reply({ content: errorMessage, ephemeral: true });
       }
     } catch (replyErr) {
