@@ -1,7 +1,8 @@
-import { SlashCommandBuilder } from "discord.js";
-import translate from "google-translate-api-x";
+import { AttachmentBuilder, SlashCommandBuilder } from "discord.js";
+import translate, { speak } from "google-translate-api-x";
 
 const DISCORD_MESSAGE_LIMIT = 2000;
+const SPEAK_CHAR_LIMIT = 200;
 
 const textOption = option =>
   option
@@ -36,6 +37,20 @@ const commandsByName = Object.fromEntries(
   commands.map(command => [command.data.name, command]),
 );
 
+async function speakTranslation(text, to) {
+  const chunks = [];
+  for (let i = 0; i < text.length; i += SPEAK_CHAR_LIMIT) {
+    chunks.push(text.slice(i, i + SPEAK_CHAR_LIMIT));
+  }
+
+  const audio = chunks.length === 1
+    ? await speak(chunks[0], { to })
+    : await speak(chunks, { to });
+  const parts = Array.isArray(audio) ? audio : [audio];
+
+  return Buffer.concat(parts.map(part => Buffer.from(part, "base64")));
+}
+
 export async function handleSlashCommand(interaction) {
   if (!interaction.isChatInputCommand()) return;
 
@@ -65,7 +80,18 @@ export async function handleSlashCommand(interaction) {
     const reply = romanization
       ? `English: ${content}\nChinese: ${chinese}\n${command.romanizationLabel}: ${romanization}`
       : chinese;
-    await interaction.editReply(reply.slice(0, DISCORD_MESSAGE_LIMIT));
+    const payload = { content: reply.slice(0, DISCORD_MESSAGE_LIMIT) };
+
+    try {
+      const audio = await speakTranslation(chinese, command.to);
+      payload.files = [
+        new AttachmentBuilder(audio, { name: `${command.data.name}.mp3` }),
+      ];
+    } catch (err) {
+      console.error("Failed to generate speech:", err);
+    }
+
+    await interaction.editReply(payload);
   } catch (err) {
     console.error("Failed to translate message:", err);
     const errorMessage = "Could not translate that text. Please try again.";
