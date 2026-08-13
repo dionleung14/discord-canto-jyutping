@@ -1,8 +1,10 @@
 import { AttachmentBuilder, SlashCommandBuilder } from "discord.js";
 import translate, { speak } from "google-translate-api-x";
+import OpenCC from "opencc-js";
 
 const DISCORD_MESSAGE_LIMIT = 2000;
 const SPEAK_CHAR_LIMIT = 200;
+const toSimplified = OpenCC.Converter({ from: "hk", to: "cn" });
 
 const textOption = option =>
   option
@@ -17,9 +19,10 @@ const jyutpingTarget = {
 };
 
 const simplifiedTarget = {
-  to: "zh-CN",
-  romanizationLabel: "Pinyin",
+  to: "yue",
+  romanizationLabel: "Jyutping",
   emptyMessage: "No Simplified Chinese translation was returned.",
+  simplify: true,
 };
 
 export const commands = [
@@ -34,7 +37,9 @@ export const commands = [
   {
     data: new SlashCommandBuilder()
       .setName("ajyp")
-      .setDescription("Translate to Cantonese characters, Jyutping, and audio")
+      .setDescription(
+        "Translate to Cantonese characters and Jyutping with audio",
+      )
       .addStringOption(textOption),
     ...jyutpingTarget,
     withAudio: true,
@@ -42,7 +47,9 @@ export const commands = [
   {
     data: new SlashCommandBuilder()
       .setName("tsimp")
-      .setDescription("Translate to Simplified Chinese")
+      .setDescription(
+        "Translate to Cantonese in Simplified characters and Jyutping",
+      )
       .addStringOption(textOption),
     ...simplifiedTarget,
     withAudio: false,
@@ -50,7 +57,9 @@ export const commands = [
   {
     data: new SlashCommandBuilder()
       .setName("asimp")
-      .setDescription("Translate to Simplified Chinese with audio")
+      .setDescription(
+        "Translate to Cantonese in Simplified characters, Jyutping, and audio",
+      )
       .addStringOption(textOption),
     ...simplifiedTarget,
     withAudio: true,
@@ -69,9 +78,10 @@ async function speakTranslation(text, to) {
     chunks.push(text.slice(i, i + SPEAK_CHAR_LIMIT));
   }
 
-  const audio = chunks.length === 1
-    ? await speak(chunks[0], { to })
-    : await speak(chunks, { to });
+  const audio =
+    chunks.length === 1
+      ? await speak(chunks[0], { to })
+      : await speak(chunks, { to });
   const parts = Array.isArray(audio) ? audio : [audio];
 
   return Buffer.concat(parts.map(part => Buffer.from(part, "base64")));
@@ -95,7 +105,8 @@ export async function handleSlashCommand(interaction) {
       client: "gtx",
       forceBatch: false,
     });
-    const chinese = result.text || "";
+    const speechText = result.text || "";
+    const chinese = command.simplify ? toSimplified(speechText) : speechText;
     const romanization = result.pronunciation;
 
     if (!chinese) {
@@ -110,7 +121,7 @@ export async function handleSlashCommand(interaction) {
 
     if (command.withAudio) {
       try {
-        const audio = await speakTranslation(chinese, command.to);
+        const audio = await speakTranslation(speechText, command.to);
         payload.files = [
           new AttachmentBuilder(audio, { name: `${command.data.name}.mp3` }),
         ];
