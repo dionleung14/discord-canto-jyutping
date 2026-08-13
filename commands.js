@@ -10,24 +10,50 @@ const textOption = option =>
     .setDescription("The text to translate")
     .setRequired(true);
 
+const jyutpingTarget = {
+  to: "yue",
+  romanizationLabel: "Jyutping",
+  emptyMessage: "No Cantonese translation was returned.",
+};
+
+const simplifiedTarget = {
+  to: "zh-CN",
+  romanizationLabel: "Pinyin",
+  emptyMessage: "No Simplified Chinese translation was returned.",
+};
+
 export const commands = [
   {
     data: new SlashCommandBuilder()
-      .setName("jyutping")
-      .setDescription("Translate text to Cantonese characters and Jyutping")
+      .setName("tjyp")
+      .setDescription("Translate to Cantonese characters and Jyutping")
       .addStringOption(textOption),
-    to: "yue",
-    romanizationLabel: "Jyutping",
-    emptyMessage: "No Cantonese translation was returned.",
+    ...jyutpingTarget,
+    withAudio: false,
   },
   {
     data: new SlashCommandBuilder()
-      .setName("simplified")
-      .setDescription("Translate text to Simplified Chinese")
+      .setName("ajyp")
+      .setDescription("Translate to Cantonese characters, Jyutping, and audio")
       .addStringOption(textOption),
-    to: "zh-CN",
-    romanizationLabel: "Pinyin",
-    emptyMessage: "No Simplified Chinese translation was returned.",
+    ...jyutpingTarget,
+    withAudio: true,
+  },
+  {
+    data: new SlashCommandBuilder()
+      .setName("tsimp")
+      .setDescription("Translate to Simplified Chinese")
+      .addStringOption(textOption),
+    ...simplifiedTarget,
+    withAudio: false,
+  },
+  {
+    data: new SlashCommandBuilder()
+      .setName("asimp")
+      .setDescription("Translate to Simplified Chinese with audio")
+      .addStringOption(textOption),
+    ...simplifiedTarget,
+    withAudio: true,
   },
 ];
 
@@ -82,13 +108,15 @@ export async function handleSlashCommand(interaction) {
       : chinese;
     const payload = { content: reply.slice(0, DISCORD_MESSAGE_LIMIT) };
 
-    try {
-      const audio = await speakTranslation(chinese, command.to);
-      payload.files = [
-        new AttachmentBuilder(audio, { name: `${command.data.name}.mp3` }),
-      ];
-    } catch (err) {
-      console.error("Failed to generate speech:", err);
+    if (command.withAudio) {
+      try {
+        const audio = await speakTranslation(chinese, command.to);
+        payload.files = [
+          new AttachmentBuilder(audio, { name: `${command.data.name}.mp3` }),
+        ];
+      } catch (err) {
+        console.error("Failed to generate speech:", err);
+      }
     }
 
     await interaction.editReply(payload);
